@@ -1,7 +1,6 @@
 -- STEP 1: DATABASE SCHEMA CREATION
 CREATE DATABASE IF NOT EXISTS crm;
 USE crm;
-
 -- 1. SALES REPRESENTATIVES TABLE
 CREATE TABLE sales_representatives (
     rep_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -764,31 +763,35 @@ SELECT c.customer_id, c.company, c.status, c.industry, order_summary.total_order
 -- 1. View for Active Customers with Highest Revenue
 CREATE VIEW vw_high_value_active_customers AS
 SELECT
-    c.customerid,
+    c.customer_id,
     c.company,
     c.industry,
     c.status,
-    COALESCE(SUM(o.totalamount), 0) AS total_revenue
+    COALESCE(SUM(o.total_amount), 0) AS total_revenue
 FROM customers c
-LEFT JOIN orders o ON c.customerid = o.customerid
+LEFT JOIN orders o ON c.customer_id = o.customer_id
 WHERE c.status = 'Active'
-GROUP BY c.customerid, c.company, c.industry, c.status
+GROUP BY c.customer_id, c.company, c.industry, c.status
 HAVING total_revenue > 50000
 ORDER BY total_revenue DESC;
+
+SELECT * FROM vw_high_value_active_customers;
 
 -- 2. View for Sales Representative Territory Performance
 CREATE VIEW vw_territory_performance AS
 SELECT
     sr.territory,
-    COUNT(c.customerid) AS customer_count,
-    COALESCE(SUM(o.totalamount), 0) AS territory_revenue,
-    ROUND(COALESCE(SUM(o.totalamount), 0)/COUNT(c.customerid), 2) AS avg_customer_value
-FROM salesrepresentatives sr
-LEFT JOIN customers c ON sr.repid = c.assignedrepid
-LEFT JOIN orders o ON c.customerid = o.customerid
+    COUNT(c.customer_id) AS customer_count,
+    COALESCE(SUM(o.total_amount), 0) AS territory_revenue,
+    ROUND(COALESCE(SUM(o.total_amount), 0)/COUNT(c.customer_id), 2) AS avg_customer_value
+FROM sales_representatives sr
+LEFT JOIN customers c ON sr.rep_id = c.assigned_rep_id
+LEFT JOIN orders o ON c.customer_id = o.customer_id
 WHERE sr.status = 'Active'
 GROUP BY sr.territory
 ORDER BY territory_revenue DESC;
+
+SELECT * FROM vw_territory_performance;
 
 -- Procedure to update last contact date for a customer
 DELIMITER //
@@ -807,19 +810,19 @@ DELIMITER ;
 -- 1. Trigger to update product stock after an order detail is inserted
 DELIMITER //
 CREATE TRIGGER after_orderdetail_insert
-AFTER INSERT ON orderdetails
+AFTER INSERT ON order_details
 FOR EACH ROW
 BEGIN
     UPDATE products
     SET stockquantity = stockquantity - NEW.quantity
-    WHERE productid = NEW.productid;
+    WHERE product_id = NEW.product_id;
 END //
 DELIMITER ;
 
 -- 2. Trigger to log change in customer's status
 CREATE TABLE IF NOT EXISTS customer_status_audit (
     audit_id INT AUTO_INCREMENT PRIMARY KEY,
-    customerid INT,
+    customer_id INT,
     old_status ENUM('Active','Inactive','Prospect','Churned'),
     new_status ENUM('Active','Inactive','Prospect','Churned'),
     changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -831,11 +834,12 @@ AFTER UPDATE ON customers
 FOR EACH ROW
 BEGIN
     IF OLD.status <> NEW.status THEN
-        INSERT INTO customer_status_audit (customerid, old_status, new_status)
-        VALUES (NEW.customerid, OLD.status, NEW.status);
+        INSERT INTO customer_status_audit (customer_id, old_status, new_status)
+        VALUES (NEW.customer_id, OLD.status, NEW.status);
     END IF;
 END //
 DELIMITER ;
+
 
 -- DATABASE SUMMARY
 SELECT 'Database Summary' as report_section, '' as metric, '' as value
@@ -851,4 +855,6 @@ UNION ALL
 SELECT '', 'Total Revenue', CONCAT('$', FORMAT((SELECT SUM(total_amount) FROM orders), 2))
 UNION ALL
 SELECT '', 'Active Sales Reps', CAST((SELECT COUNT(*) FROM sales_representatives WHERE status = 'Active') AS CHAR);
+
+
 
